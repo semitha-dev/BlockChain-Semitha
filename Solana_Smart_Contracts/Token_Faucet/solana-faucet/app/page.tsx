@@ -190,7 +190,7 @@ function FaucetApp() {
     // Friendly custom error handling
     const msg = (err.message || '').toLowerCase();
     if (
-      msg.includes('cooldown') ||
+      msg.includes('Reached maximum depth for account resolution. Unresolved accounts: `userAta`') ||
       msg.includes('too many') ||
       msg.includes('insufficient') ||
       msg.includes('block') ||
