@@ -42,7 +42,7 @@ function FaucetApp() {
         { commitment: 'confirmed' }
       );
       
-      // @ts‑expect-error
+      // @ts-ignore
       const program = new Program(IDL, PROGRAM_ID, provider);
       return program;
     } catch (error) {
