@@ -133,91 +133,87 @@ function FaucetApp() {
 
   // Request tokens from faucet
   const requestTokens = useCallback(async () => {
-    if (!publicKey) {
-      setError('Wallet not connected');
-      return;
-    }
-    
-    const program = getProgram();
-    if (!program) {
-      setError('Failed to initialize program');
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const vaultPDA = getVaultPDA();
-      const vaultAuthorityPDA = getVaultAuthorityPDA();
-      
-      const userAta = await getAssociatedTokenAddress(
-        TOKEN_MINT_ADDRESS,
-        publicKey
-      );
-      
-      // Debug logging
-      console.log('Program methods:', Object.keys(program.methods));
-      console.log('Vault PDA:', vaultPDA?.toString());
-      console.log('Vault Authority PDA:', vaultAuthorityPDA?.toString());
-      console.log('User Wallet:', publicKey?.toString());
-      console.log('User ATA:', userAta?.toString());
-      console.log('Token Mint:', TOKEN_MINT_ADDRESS?.toString());
-      
-      // Validate all accounts are defined
-      if (!vaultPDA || !vaultAuthorityPDA || !publicKey || !userAta) {
-        throw new Error('One or more required accounts are undefined');
-      }
-      
-      console.log('Attempting to call airdropToUser...');
-      
-      if (!program.methods.airdropToUser) {
-        throw new Error('airdropToUser method not found in program');
-      }
-      
-      const accounts = {
-  vault: vaultPDA,
-  vault_authority: vaultAuthorityPDA,
-  user_ata: userAta,                  
-  user_wallet: publicKey,             
-  payer: publicKey,
-  mint: TOKEN_MINT_ADDRESS,
-  token_program: TOKEN_PROGRAM_ID,
-  associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
-  system_program: SystemProgram.programId,
-  rent: SYSVAR_RENT_PUBKEY,
-};
+  if (!publicKey) {
+    setError('Wallet not connected');
+    return;
+  }
 
-      
-      console.log('Accounts being passed:', accounts);
-      
-      // Validate each account
-      Object.entries(accounts).forEach(([key, value]) => {
-        if (!value) {
-          throw new Error(`Account ${key} is undefined or null`);
-        }
-        console.log(`${key}:`, value.toString());
-      });
-      
-      const tx = await program.methods.airdropToUser()
-        .accounts(accounts)
-        .transaction();
-      
-      const signature = await sendTransaction(tx, connection);
-      await connection.confirmTransaction(signature, 'confirmed');
-      
-      // Refresh balances
-      await getUserBalance();
-      await getVaultBalance();
-      
-      alert('Successfully received 10 tokens!');
-    } catch (err: any) {
-      console.error('Error requesting tokens:', err);
-      setError(err.message || 'Failed to request tokens');
-    } finally {
-      setLoading(false);
+  const program = getProgram();
+  if (!program) {
+    setError('Failed to initialize program');
+    return;
+  }
+
+  setLoading(true);
+  setError(null);
+
+  try {
+    const vaultPDA = getVaultPDA();
+    const vaultAuthorityPDA = getVaultAuthorityPDA();
+
+    const userAta = await getAssociatedTokenAddress(
+      TOKEN_MINT_ADDRESS,
+      publicKey
+    );
+
+    if (!vaultPDA || !vaultAuthorityPDA || !publicKey || !userAta) {
+      throw new Error('One or more required accounts are undefined');
     }
-  }, [publicKey, getProgram, connection, sendTransaction, getUserBalance, getVaultBalance, getVaultPDA, getVaultAuthorityPDA]);
+
+    const accounts = {
+      vault: vaultPDA,
+      vault_authority: vaultAuthorityPDA,
+      user_ata: userAta,
+      user_wallet: publicKey,
+      payer: publicKey,
+      mint: TOKEN_MINT_ADDRESS,
+      token_program: TOKEN_PROGRAM_ID,
+      associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+      system_program: SystemProgram.programId,
+      rent: SYSVAR_RENT_PUBKEY,
+    };
+
+    const tx = await program.methods.airdropToUser()
+      .accounts(accounts)
+      .transaction();
+
+    const signature = await sendTransaction(tx, connection);
+    await connection.confirmTransaction(signature, 'confirmed');
+
+    await getUserBalance();
+    await getVaultBalance();
+
+    alert('Successfully received 10 tokens!');
+  } catch (err: any) {
+    console.error('Error requesting tokens:', err);
+
+    // Friendly custom error handling
+    const msg = (err.message || '').toLowerCase();
+    if (
+      msg.includes('cooldown') ||
+      msg.includes('too many') ||
+      msg.includes('insufficient') ||
+      msg.includes('block') ||
+      msg.includes('limit')
+    ) {
+      setError('⚠️ Maximum users per day have claimed tokens. Please try again later.');
+    } else {
+      setError(err.message || 'Failed to request tokens');
+    }
+  } finally {
+    setLoading(false);
+  }
+}, [
+  publicKey,
+  getProgram,
+  connection,
+  sendTransaction,
+  getUserBalance,
+  getVaultBalance,
+  getVaultPDA,
+  getVaultAuthorityPDA
+]);
+
 
   // Auto-load balances when wallet connects
   useEffect(() => {
