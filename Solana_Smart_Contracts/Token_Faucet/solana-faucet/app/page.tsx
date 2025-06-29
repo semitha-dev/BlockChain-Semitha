@@ -13,8 +13,8 @@ import {
   WalletDisconnectButton,
   WalletMultiButton
 } from '@solana/wallet-adapter-react-ui';
-import { clusterApiUrl, Connection, PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { Program, AnchorProvider, web3, utils, BN } from '@coral-xyz/anchor';
+import { clusterApiUrl,  PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
+import { Program, AnchorProvider} from '@coral-xyz/anchor';
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
 
 
@@ -42,7 +42,7 @@ function FaucetApp() {
         { commitment: 'confirmed' }
       );
       
-      // @ts-ignore
+      // @ts‑expect-error
       const program = new Program(IDL, PROGRAM_ID, provider);
       return program;
     } catch (error) {
