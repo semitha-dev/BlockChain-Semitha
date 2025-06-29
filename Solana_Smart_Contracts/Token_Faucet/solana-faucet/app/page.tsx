@@ -187,14 +187,16 @@ function FaucetApp() {
   } catch (err: any) {
     console.error('Error requesting tokens:', err);
 
-    // Friendly custom error handling
     const msg = (err.message || '').toLowerCase();
+
+    // Handle specific case for unresolved accounts
     if (
-      msg.includes('Reached maximum depth for account resolution. Unresolved accounts: `userAta`') ||
-      msg.includes('too many') ||
-      msg.includes('insufficient') ||
-      msg.includes('block') ||
-      msg.includes('limit')
+      msg.includes('unresolved accounts') || 
+      msg.includes('userata') ||
+      msg.includes('maximum depth') ||
+      msg.includes('cooldown') ||
+      msg.includes('limit') ||
+      msg.includes('insufficient')
     ) {
       setError('⚠️ Maximum users per day have claimed tokens. Please try again later.');
     } else {
@@ -213,6 +215,7 @@ function FaucetApp() {
   getVaultPDA,
   getVaultAuthorityPDA
 ]);
+
 
 
   // Auto-load balances when wallet connects
