@@ -13,35 +13,77 @@ import {
   WalletDisconnectButton,
   WalletMultiButton
 } from '@solana/wallet-adapter-react-ui';
-import { clusterApiUrl,  PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { Program, AnchorProvider} from '@coral-xyz/anchor';
+import { clusterApiUrl, PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
+import { Program, AnchorProvider } from '@coral-xyz/anchor';
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
 
-
+// ---- Program config ----
 const PROGRAM_ID = new PublicKey('ZBRsgBJ3YzdRUi8UFquwxUhxd8VqpicaHKFa4hBHHGf');
-const TOKEN_MINT_ADDRESS = new PublicKey('9A3BdDctisN5ezCKNNrL6FMdhdA2zT8RDzFxuASr5g89'); 
+const TOKEN_MINT_ADDRESS = new PublicKey('9A3BdDctisN5ezCKNNrL6FMdhdA2zT8RDzFxuASr5g89');
 
-// IDL file 
+// IDL
 import IDL from './idl/faucet.json';
+
+// ---- Small helpers (UI only) ----
+function truncate(pk: string, left = 4, right = 4) {
+  if (!pk) return '';
+  if (pk.length <= left + right) return pk;
+  return `${pk.slice(0, left)}…${pk.slice(-right)}`;
+}
+
+function Card({
+  children,
+  className = '',
+}: React.PropsWithChildren<{ className?: string }>) {
+  return (
+    <div className={`bg-slate-900/60 border border-slate-700/60 rounded-xl ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="text-center mb-8">
+      <h2 className="text-2xl md:text-3xl font-bold text-white">{title}</h2>
+      {subtitle && <p className="text-sm md:text-base text-slate-300 mt-1">{subtitle}</p>}
+    </div>
+  );
+}
+
+function Banner({
+  tone = 'info',
+  children,
+}: React.PropsWithChildren<{ tone?: 'info' | 'success' | 'error' }>) {
+  const toneMap = {
+    info: 'bg-sky-500/10 border border-sky-500/30 text-sky-200',
+    success: 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-200',
+    error: 'bg-rose-500/10 border border-rose-500/30 text-rose-200',
+  } as const;
+  return <div className={`rounded-lg px-4 py-3 ${toneMap[tone]}`}>{children}</div>;
+}
+
+// ============================== Faucet App ===============================
 
 function FaucetApp() {
   const { connection } = useConnection();
   const { publicKey, signTransaction, sendTransaction } = useWallet();
+
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [vaultBalance, setVaultBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const getProgram = useCallback(() => {
     if (!publicKey || !signTransaction) return null;
-    
+
     try {
       const provider = new AnchorProvider(
         connection,
         { publicKey, signTransaction, signAllTransactions: async (txs) => txs },
-        { commitment: 'confirmed' }
+        { commitment: 'confirmed' },
       );
-      
       // @ts-ignore
       const program = new Program(IDL, PROGRAM_ID, provider);
       return program;
@@ -51,14 +93,9 @@ function FaucetApp() {
     }
   }, [connection, publicKey, signTransaction]);
 
-
   const getVaultPDA = useCallback(() => {
     try {
-      const [pda, bump] = PublicKey.findProgramAddressSync(
-        [Buffer.from('vault')],
-        PROGRAM_ID
-      );
-      console.log('Vault PDA:', pda.toString());
+      const [pda] = PublicKey.findProgramAddressSync([Buffer.from('vault')], PROGRAM_ID);
       return pda;
     } catch (error) {
       console.error('Error generating vault PDA:', error);
@@ -68,11 +105,7 @@ function FaucetApp() {
 
   const getVaultAuthorityPDA = useCallback(() => {
     try {
-      const [pda, bump] = PublicKey.findProgramAddressSync(
-        [Buffer.from('vault_authority')],
-        PROGRAM_ID
-      );
-      console.log('Vault Authority PDA:', pda.toString());
+      const [pda] = PublicKey.findProgramAddressSync([Buffer.from('vault_authority')], PROGRAM_ID);
       return pda;
     } catch (error) {
       console.error('Error generating vault authority PDA:', error);
@@ -80,32 +113,25 @@ function FaucetApp() {
     }
   }, []);
 
-  // Get user token balance
+  // ---- Balances ----
   const getUserBalance = useCallback(async () => {
     if (!publicKey) return;
-    
+
     setLoading(true);
     setError(null);
-    
+    setSuccess(null);
+
     try {
-      const userAta = await getAssociatedTokenAddress(
-        TOKEN_MINT_ADDRESS,
-        publicKey
-      );
-      
-      console.log('User ATA:', userAta.toString());
-      
+      const userAta = await getAssociatedTokenAddress(TOKEN_MINT_ADDRESS, publicKey);
       const accountInfo = await connection.getAccountInfo(userAta);
-      
       if (!accountInfo) {
         setUserBalance(0);
         return;
       }
-      
       const tokenAccount = await connection.getTokenAccountBalance(userAta);
       const balance = tokenAccount.value.uiAmount || 0;
       setUserBalance(balance);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error getting user balance:', err);
       setUserBalance(0);
     } finally {
@@ -113,112 +139,101 @@ function FaucetApp() {
     }
   }, [publicKey, connection]);
 
-  // Get vault balance
   const getVaultBalance = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+    setSuccess(null);
+
     try {
       const vaultPDA = getVaultPDA();
       const tokenAccount = await connection.getTokenAccountBalance(vaultPDA);
       const balance = tokenAccount.value.uiAmount || 0;
       setVaultBalance(balance);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error getting vault balance:', err);
-      setError('Failed to get vault balance');
+      setError('Failed to fetch vault balance.');
     } finally {
       setLoading(false);
     }
   }, [connection, getVaultPDA]);
 
-  // Request tokens from faucet
+  // ---- Request tokens ----
   const requestTokens = useCallback(async () => {
-  if (!publicKey) {
-    setError('Wallet not connected');
-    return;
-  }
-
-  const program = getProgram();
-  if (!program) {
-    setError('Failed to initialize program');
-    return;
-  }
-
-  setLoading(true);
-  setError(null);
-
-  try {
-    const vaultPDA = getVaultPDA();
-    const vaultAuthorityPDA = getVaultAuthorityPDA();
-
-    const userAta = await getAssociatedTokenAddress(
-      TOKEN_MINT_ADDRESS,
-      publicKey
-    );
-
-    if (!vaultPDA || !vaultAuthorityPDA || !publicKey || !userAta) {
-      throw new Error('One or more required accounts are undefined');
+    if (!publicKey) {
+      setError('Wallet not connected.');
+      return;
+    }
+    const program = getProgram();
+    if (!program) {
+      setError('Failed to initialize program.');
+      return;
     }
 
-    const accounts = {
-      vault: vaultPDA,
-      vault_authority: vaultAuthorityPDA,
-      user_ata: userAta,
-      user_wallet: publicKey,
-      payer: publicKey,
-      mint: TOKEN_MINT_ADDRESS,
-      token_program: TOKEN_PROGRAM_ID,
-      associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
-      system_program: SystemProgram.programId,
-      rent: SYSVAR_RENT_PUBKEY,
-    };
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
 
-    const tx = await program.methods.airdropToUser()
-      .accounts(accounts)
-      .transaction();
+    try {
+      const vaultPDA = getVaultPDA();
+      const vaultAuthorityPDA = getVaultAuthorityPDA();
+      const userAta = await getAssociatedTokenAddress(TOKEN_MINT_ADDRESS, publicKey);
 
-    const signature = await sendTransaction(tx, connection);
-    await connection.confirmTransaction(signature, 'confirmed');
+      if (!vaultPDA || !vaultAuthorityPDA || !publicKey || !userAta) {
+        throw new Error('One or more required accounts are undefined.');
+      }
 
-    await getUserBalance();
-    await getVaultBalance();
+      const accounts = {
+        vault: vaultPDA,
+        vault_authority: vaultAuthorityPDA,
+        user_ata: userAta,
+        user_wallet: publicKey,
+        payer: publicKey,
+        mint: TOKEN_MINT_ADDRESS,
+        token_program: TOKEN_PROGRAM_ID,
+        associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+        system_program: SystemProgram.programId,
+        rent: SYSVAR_RENT_PUBKEY,
+      };
 
-    alert('Successfully received 10 tokens!');
-  } catch (err: any) {
-    console.error('Error requesting tokens:', err);
+      const tx = await program.methods.airdropToUser().accounts(accounts).transaction();
+      const signature = await sendTransaction(tx, connection);
+      await connection.confirmTransaction(signature, 'confirmed');
 
-    const msg = (err.message || '').toLowerCase();
+      await getUserBalance();
+      await getVaultBalance();
 
-    // Handle specific case for unresolved accounts
-    if (
-      msg.includes('unresolved accounts') || 
-      msg.includes('userata') ||
-      msg.includes('maximum depth') ||
-      msg.includes('cooldown') ||
-      msg.includes('limit') ||
-      msg.includes('insufficient')
-    ) {
-      setError('⚠️ Maximum users per day have claimed tokens. Please try again later.');
-    } else {
-      setError(err.message || 'Failed to request tokens');
+      setSuccess('Request successful. You received 10 tokens.');
+    } catch (err: any) {
+      console.error('Error requesting tokens:', err);
+      const msg = (err?.message || '').toLowerCase();
+
+      if (
+        msg.includes('unresolved accounts') ||
+        msg.includes('userata') ||
+        msg.includes('maximum depth') ||
+        msg.includes('cooldown') ||
+        msg.includes('limit') ||
+        msg.includes('insufficient')
+      ) {
+        setError('Maximum claim limit reached for now. Please try again later.');
+      } else {
+        setError(err?.message || 'Failed to request tokens.');
+      }
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
-  }
-}, [
-  publicKey,
-  getProgram,
-  connection,
-  sendTransaction,
-  getUserBalance,
-  getVaultBalance,
-  getVaultPDA,
-  getVaultAuthorityPDA
-]);
+  }, [
+    publicKey,
+    getProgram,
+    connection,
+    sendTransaction,
+    getUserBalance,
+    getVaultBalance,
+    getVaultPDA,
+    getVaultAuthorityPDA,
+  ]);
 
-
-
-  // Auto-load balances when wallet connects
+  // Auto-load on connect
   useEffect(() => {
     if (publicKey) {
       getUserBalance();
@@ -227,136 +242,149 @@ function FaucetApp() {
   }, [publicKey, getUserBalance, getVaultBalance]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-white mb-4">
-            🚰 Solana Token Faucet
-          </h1>
-          <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Connect your wallet and claim free tokens from our faucet. Get 10 tokens per request!
-          </p>
-        </div>
-
-        {/* Wallet Connection */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+    <div className="min-h-screen bg-slate-950">
+      {/* Top bar */}
+      <header className="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur supports-[backdrop-filter]:bg-slate-950/60">
+        <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-white text-xl font-semibold tracking-tight">Solana Token Faucet</h1>
+            <p className="text-slate-400 text-sm">Claim test tokens for demos and development.</p>
+          </div>
+          <div className="flex items-center gap-3">
             {!publicKey ? (
-              <div className="text-center">
-                <p className="text-white mb-4">Connect your wallet to get started</p>
-                <WalletMultiButton className="!bg-gradient-to-r !from-purple-500 !to-pink-500 hover:!from-purple-600 hover:!to-pink-600" />
-              </div>
+              <WalletMultiButton className="!bg-slate-800 hover:!bg-slate-700 !text-white !rounded-lg !px-4 !py-2 !h-auto !min-h-0 !font-medium" />
             ) : (
-              <div className="text-center">
-                <p className="text-green-400 mb-4">✅ Wallet Connected</p>
-                <p className="text-gray-300 text-sm mb-4 break-all">
-                  {publicKey.toString()}
-                </p>
-                <WalletDisconnectButton className="!bg-red-500 hover:!bg-red-600" />
+              <div className="flex items-center gap-3">
+                <div className="hidden md:block text-slate-300 text-sm font-mono bg-slate-800/80 border border-slate-700/70 rounded-md px-2 py-1">
+                  {truncate(publicKey.toString(), 6, 6)}
+                </div>
+                <WalletDisconnectButton className="!bg-slate-800 hover:!bg-slate-700 !text-white !rounded-lg !px-3 !py-2 !h-auto !min-h-0 !font-medium" />
               </div>
             )}
           </div>
         </div>
+      </header>
 
-        {/* Main Content */}
+      <main className="mx-auto max-w-6xl px-4 py-10">
+        {/* Banners */}
+        <div className="space-y-3 mb-8">
+          {success && <Banner tone="success">{success}</Banner>}
+          {error && <Banner tone="error">{error}</Banner>}
+          {!publicKey && (
+            <Banner tone="info">
+              Connect a wallet to view your token balance, check the vault, and request tokens.
+            </Banner>
+          )}
+        </div>
+
         {publicKey && (
-          <div className="max-w-4xl mx-auto">
-            {/* Error Display */}
-            {error && (
-              <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-6">
-                <p className="text-red-200">❌ {error}</p>
-              </div>
-            )}
-
-            {/* Balance Cards */}
-            <div className="grid md:grid-cols-2 gap-6 mb-8">
-              {/* User Balance Card */}
-              <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                <div className="text-center">
-                  <h3 className="text-2xl font-semibold text-white mb-4">
-                    💰 Your Balance
-                  </h3>
-                  <div className="text-4xl font-bold text-green-400 mb-4">
-                    {userBalance !== null ? `${userBalance} TOKENS` : '--'}
+          <div className="grid grid-cols-1 gap-8">
+            {/* Balances */}
+            <section>
+              <SectionTitle title="Balances" subtitle="Real-time SPL token balances" />
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* User Balance */}
+                <Card className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-white font-semibold text-lg">Your Balance</h3>
+                      <p className="text-slate-400 text-sm mt-1">Associated token account</p>
+                    </div>
+                    <button
+                      onClick={getUserBalance}
+                      disabled={loading}
+                      className="text-sm bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800/60 disabled:cursor-not-allowed text-white px-3 py-2 rounded-md"
+                    >
+                      {loading ? 'Refreshing…' : 'Refresh'}
+                    </button>
                   </div>
-                  <button
-                    onClick={getUserBalance}
-                    disabled={loading}
-                    className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium transition-colors"
-                  >
-                    {loading ? '⏳' : '🔄'} Refresh Balance
-                  </button>
-                </div>
-              </div>
-
-              {/* Vault Balance Card */}
-              <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                <div className="text-center">
-                  <h3 className="text-2xl font-semibold text-white mb-4">
-                    🏦 Vault Balance
-                  </h3>
-                  <div className="text-4xl font-bold text-yellow-400 mb-4">
-                    {vaultBalance !== null ? `${vaultBalance} TOKENS` : '--'}
+                  <div className="mt-5">
+                    <p className="text-4xl font-bold tracking-tight text-emerald-400">
+                      {userBalance !== null ? `${userBalance.toLocaleString()} TOKENS` : '--'}
+                    </p>
                   </div>
-                  <button
-                    onClick={getVaultBalance}
-                    disabled={loading}
-                    className="bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium transition-colors"
-                  >
-                    {loading ? '⏳' : '🔄'} Check Vault
-                  </button>
-                </div>
+                </Card>
+
+                {/* Vault Balance */}
+                <Card className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-white font-semibold text-lg">Vault Balance</h3>
+                      <p className="text-slate-400 text-sm mt-1">Program vault PDA</p>
+                    </div>
+                    <button
+                      onClick={getVaultBalance}
+                      disabled={loading}
+                      className="text-sm bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800/60 disabled:cursor-not-allowed text-white px-3 py-2 rounded-md"
+                    >
+                      {loading ? 'Checking…' : 'Check'}
+                    </button>
+                  </div>
+                  <div className="mt-5">
+                    <p className="text-4xl font-bold tracking-tight text-amber-300">
+                      {vaultBalance !== null ? `${vaultBalance.toLocaleString()} TOKENS` : '--'}
+                    </p>
+                  </div>
+                </Card>
               </div>
-            </div>
+            </section>
 
             {/* Faucet Action */}
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-8 border border-white/20 text-center">
-              <h3 className="text-3xl font-semibold text-white mb-4">
-                🚰 Token Faucet
-              </h3>
-              <p className="text-gray-300 mb-6">
-                Click the button below to receive 10 free tokens. Each request gives you exactly 10 tokens.
-              </p>
-              <button
-                onClick={requestTokens}
-                disabled={loading || !vaultBalance || vaultBalance < 10}
-                className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl font-bold text-lg transition-all transform hover:scale-105 disabled:transform-none"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  '🎁 Request 10 Tokens'
-                )}
-              </button>
-              
-              {vaultBalance !== null && vaultBalance < 10 && (
-                <p className="text-red-400 mt-4">
-                  ⚠️ Insufficient tokens in vault. Current vault balance: {vaultBalance}
-                </p>
-              )}
-            </div>
+            <section>
+              <SectionTitle title="Request Tokens" subtitle="Each request sends 10 tokens to your wallet" />
+              <Card className="p-8">
+                <div className="flex flex-col items-center text-center">
+                  <p className="text-slate-300 max-w-2xl">
+                    Click the button below to request 10 tokens from the faucet. Transactions are submitted to the
+                    network and confirmed before balances refresh.
+                  </p>
 
-            {/* Instructions */}
-            <div className="mt-8 bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
-              <h4 className="text-xl font-semibold text-white mb-4">📋 How to Use:</h4>
-              <ol className="list-decimal list-inside text-gray-300 space-y-2">
-                <li>Connect your Solana wallet (Phantom, Solflare, etc.)</li>
-                <li>Check your current token balance</li>
-                <li>Click "Request 10 Tokens" to receive tokens from the faucet</li>
-                <li>Wait for the transaction to confirm</li>
-                <li>Your balance will automatically update</li>
-              </ol>
-            </div>
+                  <button
+                    onClick={requestTokens}
+                    disabled={loading || !vaultBalance || vaultBalance < 10}
+                    className="mt-6 inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                  >
+                    {loading ? 'Processing…' : 'Request 10 Tokens'}
+                  </button>
+
+                  {vaultBalance !== null && vaultBalance < 10 && (
+                    <p className="text-rose-300 mt-4">
+                      Insufficient tokens in the vault. Current vault balance: {vaultBalance}
+                    </p>
+                  )}
+                </div>
+              </Card>
+            </section>
+
+            {/* How-to */}
+            <section>
+              <SectionTitle title="How it works" />
+              <Card className="p-6">
+                <ol className="list-decimal list-inside text-slate-300 space-y-2">
+                  <li>Connect your Solana wallet (Phantom, Solflare, Torus, etc.).</li>
+                  <li>Review your current SPL token balance.</li>
+                  <li>Click <span className="font-medium text-white">Request 10 Tokens</span> to receive an airdrop.</li>
+                  <li>Wait for the transaction to confirm on-chain.</li>
+                  <li>Your balance and the vault balance will refresh automatically.</li>
+                </ol>
+              </Card>
+            </section>
           </div>
         )}
-      </div>
+
+        {!publicKey && (
+          <div className="max-w-3xl mx-auto mt-6">
+            <Card className="p-8">
+              <div className="text-center">
+                <h3 className="text-white font-semibold text-lg">Get started</h3>
+                <p className="text-slate-300 mt-2">
+                  Use the connect button in the top-right to link your wallet. Once connected, you can view balances and request tokens.
+                </p>
+              </div>
+            </Card>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
@@ -364,14 +392,10 @@ function FaucetApp() {
 export default function Home() {
   const network = WalletAdapterNetwork.Devnet;
   const endpoint = useMemo(() => clusterApiUrl(network), [network]);
-  
+
   const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-      new TorusWalletAdapter(),
-    ],
-    []
+    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter(), new TorusWalletAdapter()],
+    [],
   );
 
   return (
